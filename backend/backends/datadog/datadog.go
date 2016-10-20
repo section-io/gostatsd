@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	backendTypes "github.com/atlassian/gostatsd/backend/types"
@@ -42,6 +43,7 @@ type client struct {
 	apiEndpoint           string
 	maxRequestElapsedTime time.Duration
 	client                http.Client
+	seriesFree            sync.Pool
 	metricsPerBatch       uint
 	now                   func() time.Time // Returns current time. Useful for testing.
 }
@@ -76,14 +78,25 @@ func (d *client) SendMetricsAsync(ctx context.Context, metrics *types.MetricMap,
 	}
 	counter := 0
 	results := make(chan error)
-	d.processMetrics(metrics, func(ts *timeSeries) {
-		go func() {
+	d.processMetrics(metrics, func(ts **timeSeries, isLast bool) {
+		go func(ts *timeSeries) {
+			defer func() {
+				// Erase contents to make objects GC-able
+				for i := range ts.Series {
+					ts.Series[i] = metric{}
+				}
+				ts.Series = ts.Series[:0]
+				d.seriesFree.Put(ts)
+			}()
 			err := d.postMetrics(ctx, ts)
 			select {
 			case <-ctx.Done():
 			case results <- err:
 			}
-		}()
+		}(*ts)
+		if !isLast {
+			*ts = d.seriesFree.Get().(*timeSeries)
+		}
 		counter++
 	})
 	go func() {
@@ -102,11 +115,9 @@ func (d *client) SendMetricsAsync(ctx context.Context, metrics *types.MetricMap,
 	}()
 }
 
-func (d *client) processMetrics(metrics *types.MetricMap, cb func(*timeSeries)) {
+func (d *client) processMetrics(metrics *types.MetricMap, cb func(**timeSeries, bool)) {
 	fl := flush{
-		ts: &timeSeries{
-			Series: make([]metric, 0, d.metricsPerBatch),
-		},
+		ts:               d.seriesFree.Get().(*timeSeries),
 		timestamp:        float64(d.now().Unix()),
 		flushIntervalSec: metrics.FlushInterval.Seconds(),
 		metricsPerBatch:  d.metricsPerBatch,
@@ -285,6 +296,13 @@ func NewClient(apiEndpoint, apiKey string, metricsPerBatch uint, clientTimeout, 
 				}).DialContext,
 			},
 			Timeout: clientTimeout,
+		},
+		seriesFree: sync.Pool{
+			New: func() interface{} {
+				return &timeSeries{
+					Series: make([]metric, 0, metricsPerBatch),
+				}
+			},
 		},
 		metricsPerBatch: metricsPerBatch,
 		now:             time.Now,

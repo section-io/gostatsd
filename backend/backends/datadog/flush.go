@@ -19,7 +19,7 @@ type flush struct {
 	timestamp        float64
 	flushIntervalSec float64
 	metricsPerBatch  uint
-	cb               func(*timeSeries)
+	cb               func(**timeSeries, bool)
 }
 
 // timeSeries represents a time series data structure.
@@ -54,15 +54,12 @@ func (f *flush) addMetric(name string, metricType metricType, value float64, hos
 
 func (f *flush) maybeFlush() {
 	if uint(len(f.ts.Series))+20 >= f.metricsPerBatch { // flush before it reaches max size and grows the slice
-		f.cb(f.ts)
-		f.ts = &timeSeries{
-			Series: make([]metric, 0, f.metricsPerBatch),
-		}
+		f.cb(&f.ts, false)
 	}
 }
 
 func (f *flush) finish() {
 	if len(f.ts.Series) > 0 {
-		f.cb(f.ts)
+		f.cb(&f.ts, true)
 	}
 }
