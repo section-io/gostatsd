@@ -312,7 +312,7 @@ func (a *aggregator) receiveSet(m *types.Metric, tagsKey string, now types.Nanot
 // Receive aggregates an incoming metric.
 func (a *aggregator) Receive(m *types.Metric, now time.Time) {
 	a.NumStats++
-	tagsKey := formatTagsKey(m.Tags, m.Hostname)
+	tagsKey := formatTagsKey(m.Tags, "")
 	nowNano := types.Nanotime(now.UnixNano())
 
 	switch m.Type {
