@@ -14,13 +14,13 @@ import (
 )
 
 const (
-	internalMetric     = "statsd."
-	badLinesSeen       = internalMetric + "bad_lines_seen"
-	metricsReceived    = internalMetric + "metrics_received"
-	packetsReceived    = internalMetric + "packets_received"
-	numStats           = internalMetric + "numStats"
-	aggregatorNumStats = internalMetric + "aggregator_num_stats"
-	processingTime     = internalMetric + "processing_time"
+	internalMetric           = "statsd."
+	badLinesSeenSuffix       = ".bad_lines_seen"
+	metricsReceivedSuffix    = ".metrics_received"
+	packetsReceivedSuffix    = ".packets_received"
+	numStatsSuffix           = ".numStats"
+	aggregatorNumStatsSuffix = ".aggregator_num_stats"
+	processingTimeSuffix     = ".processing_time"
 )
 
 // FlusherStats holds statistics about a Flusher.
@@ -54,6 +54,14 @@ type flusher struct {
 	sentBadLines        uint64
 	sentPacketsReceived uint64
 	sentMetricsReceived uint64
+
+	// Metric names
+	badLinesSeen       string
+	metricsReceived    string
+	packetsReceived    string
+	numStats           string
+	aggregatorNumStats string
+	processingTime     string
 }
 
 // NewFlusher creates a new Flusher with provided configuration.
@@ -66,6 +74,13 @@ func NewFlusher(flushInterval time.Duration, dispatcher Dispatcher, receiver Rec
 		backends:      backends,
 		selfIP:        selfIP,
 		hostname:      hostname,
+
+		badLinesSeen:       internalMetric + hostname + badLinesSeenSuffix,
+		metricsReceived:    internalMetric + hostname + metricsReceivedSuffix,
+		packetsReceived:    internalMetric + hostname + packetsReceivedSuffix,
+		numStats:           internalMetric + hostname + numStatsSuffix,
+		aggregatorNumStats: internalMetric + hostname + aggregatorNumStatsSuffix,
+		processingTime:     internalMetric + hostname + processingTimeSuffix,
 	}
 }
 
@@ -140,17 +155,17 @@ func (f *flusher) dispatchInternalStats(ctx context.Context, dispatcherStats map
 	metrics := make([]types.Metric, 0, 4+2*len(dispatcherStats))
 	metrics = append(metrics,
 		types.Metric{
-			Name:  badLinesSeen,
+			Name:  f.badLinesSeen,
 			Value: float64(receiverStats.BadLines - f.sentBadLines),
 			Type:  types.COUNTER,
 		},
 		types.Metric{
-			Name:  metricsReceived,
+			Name:  f.metricsReceived,
 			Value: float64(receiverStats.MetricsReceived - f.sentMetricsReceived),
 			Type:  types.COUNTER,
 		},
 		types.Metric{
-			Name:  packetsReceived,
+			Name:  f.packetsReceived,
 			Value: float64(packetsReceivedValue),
 			Type:  types.COUNTER,
 		})
@@ -160,20 +175,20 @@ func (f *flusher) dispatchInternalStats(ctx context.Context, dispatcherStats map
 		tag := fmt.Sprintf("aggregator_id:%d", workerID)
 		metrics = append(metrics,
 			types.Metric{
-				Name:  aggregatorNumStats,
+				Name:  f.aggregatorNumStats,
 				Value: float64(stat.NumStats),
 				Tags:  types.Tags{tag},
 				Type:  types.COUNTER,
 			},
 			types.Metric{
-				Name:  processingTime,
+				Name:  f.processingTime,
 				Value: float64(stat.ProcessingTime) / float64(time.Millisecond),
 				Tags:  types.Tags{tag},
 				Type:  types.GAUGE,
 			})
 	}
 	metrics = append(metrics, types.Metric{
-		Name:  numStats,
+		Name:  f.numStats,
 		Value: float64(totalStats),
 		Type:  types.COUNTER,
 	})
