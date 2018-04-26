@@ -133,6 +133,7 @@ func (f *flusher) sendMetricsAsync(ctx context.Context, wg *sync.WaitGroup, m *t
 		log.Debugf("Sending %d metrics to backend %s", m.NumStats, backend.BackendName())
 		backend.SendMetricsAsync(ctx, m, func(errs []error) {
 			defer wg.Done()
+			log.Debugf("Send of %d metrics to backend %s completed with %d errors", m.NumStats, backend.BackendName(), len(errs))
 			f.handleSendResult(errs)
 		})
 	}
