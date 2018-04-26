@@ -95,6 +95,9 @@ func (client *client) SendMetricsAsync(ctx context.Context, metrics *types.Metri
 		cb(nil)
 		return
 	}
+
+	log.Debugf("Producing %d graphite metrics values from %d samples", MetricCount(metrics), metrics.NumStats)
+
 	buf := client.preparePayload(metrics, time.Now())
 	sink := make(chan *bytes.Buffer, 1)
 	sink <- buf
@@ -145,6 +148,28 @@ func (client *client) preparePayload(metrics *types.MetricMap, ts time.Time) *by
 		fmt.Fprintf(buf, "%s%s%s %d %d\n", client.setsNamespace, sk(key), client.globalSuffix, len(set.Values), now)
 	})
 	return buf
+}
+
+// GraphiteCount returns an aggregate count of all values output for counters, timers, gauges & sets
+// Tightly linked to output created by preparePayload
+func MetricCount(m *types.MetricMap) int {
+	count := 0
+	for _, value := range m.Counters {
+		count += len(value) * 2 // count,rate
+	}
+	for _, value := range m.Timers {
+		count += len(value) * 9 // lower,upper,count,count_ps,mean,median,std,sum,sum_squares
+		for _, timer := range value {
+			count += len(timer.Percentiles) // Percentiles on each timer
+		}
+	}
+	for _, value := range m.Gauges {
+		count += len(value) * 1 // single value
+	}
+	for _, value := range m.Sets {
+		count += len(value) * 1 // single value
+	}
+	return count
 }
 
 // SendEvent discards events.
